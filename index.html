@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>NetMaster · Plateforme CCNA-CCNP</title>
+<meta name="description" content="Plateforme d'apprentissage interactive : VLANs, OSPF, BGP, IPv6 — révisions d'examen avec animations.">
+<!-- Mobile / iOS (iPhone 15 Pro) -->
+<meta name="theme-color" content="#0b1020" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#eef2fb" media="(prefers-color-scheme: light)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NetMaster">
+<link rel="stylesheet" href="assets/css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛰️</text></svg>">
+</head>
+<body>
+
+<!-- ============ SPLASH / INTRO ============ -->
+<div id="splash" class="splash">
+  <div class="splash-inner">
+    <div class="splash-logo">
+      <svg viewBox="0 0 120 120" width="92" height="92" aria-hidden="true">
+        <g class="splash-net">
+          <line x1="60" y1="22" x2="22" y2="60"/><line x1="60" y1="22" x2="98" y2="60"/>
+          <line x1="22" y1="60" x2="60" y2="98"/><line x1="98" y1="60" x2="60" y2="98"/>
+          <line x1="60" y1="22" x2="60" y2="98"/><line x1="22" y1="60" x2="98" y2="60"/>
+        </g>
+        <circle cx="60" cy="22" r="8" class="node n1"/>
+        <circle cx="22" cy="60" r="8" class="node n2"/>
+        <circle cx="98" cy="60" r="8" class="node n3"/>
+        <circle cx="60" cy="98" r="8" class="node n4"/>
+        <circle cx="60" cy="60" r="10" class="node n5"/>
+      </svg>
+    </div>
+    <h1 class="splash-title">Net<span>Master</span></h1>
+    <p class="splash-sub">Réseaux avancés · CCNA / CCNP — 2ISI</p>
+    <div class="splash-bar"><span></span></div>
+    <p class="splash-hint">Chargement des modules…</p>
+  </div>
+</div>
+
+<!-- ============ APP SHELL ============ -->
+<div id="app" class="app hidden">
+
+  <!-- Sidebar -->
+  <aside id="sidebar" class="sidebar">
+    <div class="brand" data-nav="home">
+      <div class="brand-mark">
+        <svg viewBox="0 0 32 32" width="30" height="30"><path d="M16 3l11 6v8c0 7-5 11-11 13C10 28 5 24 5 17V9l11-6z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="16" cy="15" r="3.4" fill="currentColor"/><path d="M16 18.4V23M11 13l-3-2M21 13l3-2" stroke="currentColor" stroke-width="1.4"/></svg>
+      </div>
+      <div class="brand-text"><strong>NetMaster</strong><span>CCNA · CCNP</span></div>
+    </div>
+
+    <div class="exam-countdown" id="examBadge"></div>
+
+    <nav class="nav" id="nav"></nav>
+
+    <div class="sidebar-foot">
+      <button class="ghost-btn" data-nav="exam"><span class="ico">🎯</span> Mode Examen</button>
+      <button class="ghost-btn" data-nav="flashcards"><span class="ico">🃏</span> Flashcards</button>
+      <button class="ghost-btn" data-nav="cheatsheet"><span class="ico">⌨️</span> Mémo commandes</button>
+    </div>
+  </aside>
+
+  <div class="sidebar-scrim" id="scrim"></div>
+
+  <!-- Main -->
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-toggle" id="menuToggle" aria-label="Menu">
+        <svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <div class="crumbs" id="crumbs"></div>
+      <div class="topbar-actions">
+        <div class="global-progress" id="globalProgress" title="Progression globale">
+          <svg viewBox="0 0 36 36" width="38" height="38">
+            <path class="gp-track" d="M18 2.5a15.5 15.5 0 1 1 0 31 15.5 15.5 0 0 1 0-31"/>
+            <path class="gp-fill" id="gpFill" d="M18 2.5a15.5 15.5 0 1 1 0 31 15.5 15.5 0 0 1 0-31"/>
+          </svg>
+          <span id="gpText">0%</span>
+        </div>
+        <button class="icon-btn" id="themeToggle" aria-label="Thème">
+          <svg class="i-moon" viewBox="0 0 24 24" width="20" height="20"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" fill="currentColor"/></svg>
+          <svg class="i-sun" viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M19.4 4.6l-2.1 2.1M6.7 17.3l-2.1 2.1"/></g></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="content" id="view"></main>
+
+    <footer class="appfoot">
+      <span>NetMaster — révisions Réseaux 2ISI · contenu d'après les supports de K. EL GHOLAMI</span>
+      <span id="resetWrap"><button class="link-btn" id="resetProgress">Réinitialiser ma progression</button></span>
+    </footer>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<!-- ============ DATA + LOGIC ============ -->
+<script src="assets/js/diagrams.js"></script>
+<script src="assets/js/data-vlan.js"></script>
+<script src="assets/js/data-ospf.js"></script>
+<script src="assets/js/data-ospfmz.js"></script>
+<script src="assets/js/data-bgp.js"></script>
+<script src="assets/js/data-ipv6.js"></script>
+<script src="assets/js/data-tp.js"></script>
+<script src="assets/js/data-exam.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>
