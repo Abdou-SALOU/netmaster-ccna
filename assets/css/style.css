@@ -487,6 +487,82 @@ table.ntbl td code{font-size:.82em}
 .dg-label{font-family:ui-monospace,Consolas,monospace;pointer-events:none}
 
 /* ===================================================================
+   NETMASTER LAB — Simulateur CLI Cisco
+   =================================================================== */
+.lab-xpbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:4px 0 4px}
+.lab-xp{font-weight:800;font-size:1.05rem;background:color-mix(in srgb,var(--r-tp) 18%,transparent);
+  color:var(--r-tp);border:1px solid color-mix(in srgb,var(--r-tp) 35%,transparent);padding:6px 14px;border-radius:99px}
+.lab-xp-sub{color:var(--text-3);font-size:.84rem}
+
+.lab-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.lab-card{position:relative;border:1px solid var(--border);border-radius:18px;padding:20px;background:var(--surface);
+  cursor:pointer;overflow:hidden;transition:transform .22s var(--ease),box-shadow .22s var(--ease),border-color .22s}
+.lab-card::before{content:"";position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--mc),color-mix(in srgb,var(--mc) 40%,#fff))}
+.lab-card:hover{transform:translateY(-4px);box-shadow:var(--shadow);border-color:color-mix(in srgb,var(--mc) 45%,var(--border))}
+.lab-card.sandbox{border-style:dashed}
+.lab-top{display:flex;align-items:center;gap:13px;margin-bottom:12px}
+.lab-ico{width:48px;height:48px;border-radius:13px;display:grid;place-items:center;font-size:1.5rem;flex:none;
+  background:color-mix(in srgb,var(--mc) 16%,transparent);color:var(--mc);border:1px solid color-mix(in srgb,var(--mc) 30%,transparent)}
+.lab-title{font-weight:700;font-size:1.02rem;letter-spacing:-.3px}
+.lab-kic{font-size:.74rem;color:var(--text-3)}
+.lab-desc{color:var(--text-2);font-size:.86rem;min-height:40px}
+.lab-meta{margin-top:14px;font-size:.8rem;color:var(--mc);font-weight:600}
+.lab-done-badge{position:absolute;top:14px;right:14px;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;
+  background:var(--ok);color:#fff;font-size:.8rem;font-weight:800}
+
+/* --- run view --- */
+.lab-run{display:flex;flex-direction:column;gap:14px}
+.lab-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.lab-head-title{font-weight:750;font-size:1.1rem;flex:1;min-width:0}
+.lab-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.lab-devtabs{display:flex;gap:4px;background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:3px}
+.lab-devtab{background:transparent;border:none;color:var(--text-2);font:inherit;font-size:.82rem;font-weight:600;
+  padding:6px 12px;border-radius:8px;cursor:pointer;transition:.15s}
+.lab-devtab.on{background:var(--mc);color:#fff}
+.lab-brief{border:1px solid color-mix(in srgb,var(--mc) 30%,var(--border));border-radius:13px;padding:13px 16px;
+  background:color-mix(in srgb,var(--mc) 8%,var(--surface));font-size:.9rem;color:var(--text-2)}
+.lab-brief b{color:var(--text)}
+.lab-topo{margin-top:8px;font-family:ui-monospace,Consolas,monospace;font-size:.8rem;color:var(--text-3)}
+
+.lab-body{display:grid;grid-template-columns:1fr 300px;gap:16px;align-items:start}
+
+/* terminal */
+.term{background:var(--code-bg);border:1px solid var(--border-2);border-radius:14px;overflow:hidden;
+  display:flex;flex-direction:column;height:min(62vh,560px);box-shadow:inset 0 2px 30px -10px rgba(0,0,0,.6);cursor:text}
+.term-out{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px;
+  font-family:ui-monospace,"Cascadia Code","Consolas",monospace;font-size:.82rem;line-height:1.55}
+.tl{white-space:pre-wrap;word-break:break-word;color:#cdd9f5}
+.tl-echo{color:#eaf0ff}
+.tl-ok{color:#7ee787}
+.tl-err{color:#ff9a9a}
+.tl-cmt{color:#6b80b0;font-style:italic}
+.tl-out{color:#c8d6f5}
+.term-input-row{display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.02)}
+.term-prompt{color:#7ee787;font-family:ui-monospace,Consolas,monospace;font-size:.84rem;white-space:nowrap}
+.cli-input{flex:1;background:transparent;border:none;outline:none;color:#eaf0ff;
+  font-family:ui-monospace,Consolas,monospace;font-size:16px;caret-color:#7ee787;min-width:0}
+@media (min-width:561px){.cli-input{font-size:.86rem}}
+
+/* objectives panel */
+.lab-objs{border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:14px;position:sticky;top:84px}
+.lab-objs-head{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:.92rem;margin-bottom:10px}
+.lab-objs-head span{font-variant-numeric:tabular-nums;color:var(--mc);font-size:.84rem}
+.lab-objlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+.lab-obj{display:flex;gap:10px;align-items:flex-start;font-size:.84rem;color:var(--text-2);padding:8px 10px;border-radius:10px;background:var(--surface-2);transition:.2s}
+.lab-obj-ck{width:22px;height:22px;border-radius:7px;flex:none;display:grid;place-items:center;font-size:.74rem;font-weight:700;
+  background:var(--surface-3);color:var(--text-3);border:1px solid var(--border)}
+.lab-obj.done{color:var(--text)}
+.lab-obj.done{background:color-mix(in srgb,var(--ok) 10%,var(--surface))}
+.lab-obj.done .lab-obj-ck{background:var(--ok);color:#fff;border-color:var(--ok)}
+.lab-obj-t code{font-family:ui-monospace,Consolas,monospace;font-size:.92em;background:var(--code-bg);color:var(--mc);padding:1px 5px;border-radius:5px}
+.lab-obj-actions{display:flex;gap:8px;margin-top:12px}
+.lab-obj-actions .dg-btn{flex:1;justify-content:center}
+.lab-hintbox{margin-top:10px;font-size:.82rem;color:var(--text-2);background:color-mix(in srgb,var(--warn) 9%,var(--surface));
+  border:1px solid color-mix(in srgb,var(--warn) 30%,var(--border));border-radius:11px;padding:10px 12px;display:none}
+.lab-hintbox.show{display:block;animation:fadeUp .3s var(--ease)}
+.lab-hintbox code{font-family:ui-monospace,Consolas,monospace;background:var(--code-bg);color:var(--mc);padding:1px 5px;border-radius:5px}
+
+/* ===================================================================
    RESPONSIVE
    =================================================================== */
 @media (max-width:1100px){
@@ -504,9 +580,19 @@ table.ntbl td code{font-size:.82em}
   .appfoot{padding-left:max(18px,env(safe-area-inset-left));padding-right:max(18px,env(safe-area-inset-right))}
   .compare{grid-template-columns:1fr}
   .cheat-grid{columns:1}
+  /* Lab : objectifs au-dessus du terminal */
+  .lab-body{grid-template-columns:1fr}
+  .lab-objs{position:static;order:-1}
+  .lab-objlist{flex-direction:row;flex-wrap:wrap}
+  .lab-obj{flex:1 1 45%;min-width:0}
 }
 /* ---- iPhone 15 Pro & téléphones (≈393 px de large) ---- */
 @media (max-width:560px){
+  .term{height:min(56vh,460px)}
+  .lab-grid{grid-template-columns:1fr}
+  .lab-objlist{flex-direction:column}
+  .lab-obj{flex:1 1 auto}
+  .lab-head-title{flex:1 1 100%;order:-1}
   .topbar{gap:10px}
   .topbar-actions{gap:8px}
   .hero{padding:24px 18px}

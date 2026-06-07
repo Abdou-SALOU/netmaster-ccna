@@ -118,6 +118,7 @@
     else if (parts[0] === "m")          { renderModule(view, parts[1]); }
     else if (parts[0] === "quiz")       { renderQuiz(view, parts[1]); }
     else if (parts[0] === "exam")       { setActiveNav("exam"); renderExam(view, parts[1]); }
+    else if (parts[0] === "lab")        { setActiveNav("lab"); window.NMLab.render(view, parts[1]); }
     else if (parts[0] === "flashcards") { setActiveNav("flashcards"); renderFlash(view, parts[1]); }
     else if (parts[0] === "cheatsheet") { setActiveNav("cheatsheet"); renderCheat(view); }
     else { setActiveNav("home"); renderHome(view); }
@@ -168,6 +169,7 @@
 
       <div class="section-head"><h2>Outils de révision</h2></div>
       <div class="mod-grid">
+        ${toolCard("🖥️", "Labs CLI — Console Cisco", "Tape de vraies commandes IOS dans un terminal simulé : labs guidés avec validation auto et XP.", "lab", "tp")}
         ${toolCard("🎯", "Mode Examen", "Questions aléatoires, chrono, score final et correction détaillée.", "exam", "bgp")}
         ${toolCard("🃏", "Flashcards", "Mémorise les définitions, ports, métriques et types de LSA.", "flashcards", "ipv6")}
         ${toolCard("⌨️", "Mémo commandes", "Toutes les commandes Cisco des TP regroupées par thème.", "cheatsheet", "tp")}
