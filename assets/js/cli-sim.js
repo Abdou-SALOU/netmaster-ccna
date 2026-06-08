@@ -41,28 +41,31 @@
 
   /* ---------------- création device ---------------- */
   function mkIface(name, routed) {
-    const sub = name.includes(".");
     return {
       name,
       shutdown: routed ? true : false,
       ip: null, mask: null, ipv6: [],
       switchport: routed ? null : { mode: "access", accessVlan: 1, trunkEncap: null, trunkAllowed: "all" },
-      encap: null, desc: null
+      encap: null, desc: null, nat: null
     };
   }
   function makeDevice(spec) {
     const d = {
-      type: spec.type, hostname: spec.hostname, mode: "user", enabled: false, ctx: {},
-      running: { hostname: spec.hostname, vlans: { 1: { name: "default" } }, ipRouting: spec.type === "router", ipv6Routing: false, ospf: null, bgp: null },
+      id: spec.id || spec.hostname, type: spec.type, hostname: spec.hostname, mode: "user", enabled: false, ctx: {},
+      running: { hostname: spec.hostname, vlans: { 1: { name: "default" } }, ipRouting: spec.type === "router", ipv6Routing: false, ospf: null, bgp: null, nat: null, acls: {} },
       ifaces: {}, order: []
     };
     (spec.ifaces || []).forEach(n => { d.ifaces[n] = mkIface(n, spec.type === "router"); d.order.push(n); });
     return d;
   }
+  // PC / hôte : pas d'IOS, juste ping + ipconfig
+  function makeHost(spec) {
+    return { id: spec.id, type: "host", hostname: spec.hostname, mode: "user", ip: spec.ip, mask: spec.mask, gw: spec.gw, vlan: spec.vlan, port: spec.port };
+  }
   const SWITCH_IF = (() => { const a = []; for (let i = 1; i <= 24; i++) a.push("FastEthernet0/" + i); a.push("GigabitEthernet0/1", "GigabitEthernet0/2"); return a; })();
   const ROUTER_IF = ["GigabitEthernet0/0", "GigabitEthernet0/1", "GigabitEthernet0/2"];
-  function newSwitch(h) { return makeDevice({ type: "switch", hostname: h, ifaces: SWITCH_IF }); }
-  function newRouter(h) { return makeDevice({ type: "router", hostname: h, ifaces: ROUTER_IF }); }
+  function newSwitch(h, id) { return makeDevice({ type: "switch", hostname: h, id: id, ifaces: SWITCH_IF }); }
+  function newRouter(h, id) { return makeDevice({ type: "router", hostname: h, id: id, ifaces: ROUTER_IF }); }
 
   /* ---------------- prompt ---------------- */
   function prompt(d) {
@@ -88,14 +91,29 @@
     const parts = line.trim().split(/\s+/).filter(Boolean);
     if (!parts.length) return out;
 
+    /* ---- PC / hôte (pas d'IOS) ---- */
+    if (d.type === "host") {
+      const h0 = (parts[0] || "").toLowerCase();
+      if (parts[parts.length - 1] === "?") { say("Commandes : ping <ip>, ipconfig", "cmt"); return out; }
+      if (kw(h0, "ping", 2)) { doPing(s, parts, say); return out; }
+      if (h0 === "ipconfig" || kw(h0, "show", 2)) {
+        say(`Configuration IP de ${d.hostname}`, "out");
+        say(`   Adresse IPv4. . . . . . : ${d.ip}`, "out");
+        say(`   Masque de sous-réseau . : ${d.mask}`, "out");
+        say(`   Passerelle par défaut . : ${d.gw}`, "out");
+        return out;
+      }
+      say("'" + parts[0] + "' n'est pas reconnu. Essaie : ping <ip>, ipconfig", "err"); return out;
+    }
+
     // aide contextuelle minimale
     if (parts[parts.length - 1] === "?") { helpFor(d, parts, say); return out; }
 
     const cfgModes = ["config", "if", "subif", "range", "vlan", "router", "line"];
     const a = parts.map(x => x.toLowerCase());
 
-    /* ---- "do <cmd>" : exécuter une commande EXEC depuis le mode config ---- */
-    if (cfgModes.includes(d.mode) && kw(a[0], "do", 2) && parts.length > 1) {
+    /* ---- "do <cmd>" : exécuter une commande EXEC depuis n'importe quel mode ---- */
+    if (kw(a[0], "do", 2) && parts.length > 1) {
       const saved = d.mode, savedCtx = d.ctx; d.mode = "enable";
       const r = processLine(s, parts.slice(1).join(" "));
       d.mode = saved; d.ctx = savedCtx; return r;
@@ -104,6 +122,14 @@
     /* ---- commandes communes de sortie ---- */
     if (kw(a[0], "exit", 2)) { exitMode(d); return out; }
     if (kw(a[0], "end", 3) && cfgModes.includes(d.mode)) { d.mode = "enable"; d.ctx = {}; return out; }
+
+    /* ---- changement de contexte direct depuis un sous-mode (comme IOS) ----
+       ex: depuis (config-if), taper "interface fa0/2" bascule sur Fa0/2 sans "exit". */
+    if (["if", "subif", "range", "vlan", "router", "line"].includes(d.mode) &&
+      (kw(a[0], "interface", 3) || kw(a[0], "hostname", 4) || kw(a[0], "router", 4) || kw(a[0], "line", 3) || kw(a[0], "vlan", 4))) {
+      d.mode = "config"; d.ctx = {};
+      return cfgGlobal(s, parts, a, out, say, inval, incomplete);
+    }
 
     /* ---- USER EXEC ---- */
     if (d.mode === "user") {
@@ -195,6 +221,24 @@
       }
       d.mode = nm.includes(".") ? "subif" : "if"; d.ctx = { iface: nm }; return out;
     }
+    // access-list <n> permit|deny <src> <wild>
+    if (kw(a[0], "access-list", 6)) {
+      if (!parts[1] || !parts[2]) return incomplete(), out;
+      d.running.acls[parts[1]] = d.running.acls[parts[1]] || [];
+      d.running.acls[parts[1]].push(parts.slice(2).join(" ")); return out;
+    }
+    // ip nat inside source list <n> interface <if> overload  |  static <local> <global>
+    if (kw(a[0], "ip", 2) && kw(a[1] || "", "nat", 3)) {
+      if (kw(a[2] || "", "inside", 3) && kw(a[3] || "", "source", 3)) {
+        if (kw(a[4] || "", "list", 3)) {
+          const acl = parts[5]; let ifn = null, ovl = false;
+          for (let i = 6; i < parts.length; i++) { if (kw((a[i] || ""), "interface", 3)) ifn = normIf(parts[i + 1] || ""); if ((a[i] || "") === "overload") ovl = true; }
+          d.running.nat = { type: "pat", acl, ifName: ifn, overload: ovl }; return out;
+        }
+        if (kw(a[4] || "", "static", 3)) { d.running.nat = { type: "static", local: parts[5], global: parts[6] }; return out; }
+      }
+      return out;
+    }
     // ip routing / no ip routing
     if (kw(a[0], "ip", 2) && kw(a[1] || "", "routing", 4)) { d.running.ipRouting = true; return out; }
     if (a[0] === "no" && kw(a[1] || "", "ip", 2) && kw(a[2] || "", "routing", 4)) { d.running.ipRouting = false; return out; }
@@ -244,6 +288,12 @@
     if (kw(a[0], "ipv6", 4) && kw(a[1] || "", "address", 3)) {
       if (!parts[2]) return incomplete(), out;
       each(i => i.ipv6.push(parts[2])); return out;
+    }
+    // ip nat inside | outside
+    if (kw(a[0], "ip", 2) && kw(a[1] || "", "nat", 3)) {
+      const dir = kw(a[2] || "", "inside", 3) ? "inside" : kw(a[2] || "", "outside", 3) ? "outside" : null;
+      if (!dir) return inval(), out;
+      each(i => i.nat = dir); return out;
     }
     // encapsulation dot1Q N  (sous-interface)
     if (kw(a[0], "encapsulation", 4)) {
@@ -307,15 +357,25 @@
     inval(); return out;
   }
 
-  /* ---------------- PING (simplifié) ---------------- */
+  /* ---------------- PING (topologique) ---------------- */
   function doPing(s, parts, say) {
     const dst = parts[1] || "";
-    const reach = Object.values(s.dev.ifaces).some(i => i.ip && !i.shutdown);
     if (!dst) { say("% Incomplete command.", "err"); return; }
+    let ok, msg = "";
+    if (s.lab && typeof s.lab.ping === "function") { const r = s.lab.ping(s, s.dev, dst); ok = r.ok; msg = r.msg || ""; }
+    else { ok = genericReach(s.dev, dst); }
+    if (ok && s.dev.type === "host") s.pinged = true;
     say("Type escape sequence to abort.", "cmt");
     say(`Sending 5, 100-byte ICMP Echos to ${dst}, timeout is 2 seconds:`, "cmt");
-    say(reach ? "!!!!!" : ".....", reach ? "ok" : "err");
-    say(`Success rate is ${reach ? 100 : 0} percent (${reach ? "5/5" : "0/5"})` + (reach ? ", round-trip min/avg/max = 1/2/4 ms" : ""), reach ? "ok" : "err");
+    say(ok ? "!!!!!" : ".....", ok ? "ok" : "err");
+    say(`Success rate is ${ok ? 100 : 0} percent (${ok ? "5/5" : "0/5"})` + (ok ? ", round-trip min/avg/max = 1/2/4 ms" : ""), ok ? "ok" : "err");
+    if (!ok && msg) say("💡 " + msg, "cmt");
+  }
+  // accessibilité générique : une interface active dans le même sous-réseau que la cible
+  function genericReach(d, dst) {
+    if (!isIp(dst) || !d.ifaces) return false;
+    return Object.values(d.ifaces).some(i => i.ip && i.mask && !i.shutdown &&
+      (i.ip === dst || networkOf(i.ip, i.mask) === networkOf(dst, i.mask)));
   }
 
   function isIp(x) { return /^(\d{1,3}\.){3}\d{1,3}$/.test(x) && x.split(".").every(o => +o >= 0 && +o <= 255); }
@@ -334,6 +394,8 @@
       if (kw(a[2] || "", "interface", 3) && kw(a[3] || "", "brief", 2)) { showIpIntBr(d, say); tag("show ip interface brief"); return out; }
       if (kw(a[2] || "", "route", 3)) { showIpRoute(d, say); tag("show ip route"); return out; }
       if (kw(a[2] || "", "ospf", 4) && kw(a[3] || "", "neighbor", 4)) { showOspfNei(d, say); tag("show ip ospf neighbor"); return out; }
+      if (kw(a[2] || "", "nat", 3) && kw(a[3] || "", "translations", 3)) { showNat(d, say); tag("show ip nat translations"); return out; }
+      if (kw(a[2] || "", "bgp", 3)) { showBgp(d, say); tag("show bgp summary"); return out; }
       if (kw(a[2] || "", "protocols", 4)) { showIpProto(d, say); tag("show ip protocols"); return out; }
       say("% Sous-commande non simulée.", "cmt"); return out;
     }
@@ -418,6 +480,21 @@
     d.running.bgp.neighbors.forEach(n => say(pad(n.ip, 16) + "4 " + pad(n.as, 6) + "Idle (lab mono-routeur)", "out"));
     if (!d.running.bgp.neighbors.length) say("(aucun voisin configuré)", "cmt");
   }
+  function showNat(d, say) {
+    if (!d.running.nat) { say("(NAT non configuré)", "cmt"); return; }
+    const ins = ifList(d).filter(i => i.nat === "inside" && i.ip).map(i => shortIf(i.name));
+    const outs = ifList(d).filter(i => i.nat === "outside" && i.ip);
+    if (d.running.nat.type === "pat") {
+      say("Pro Inside global      Inside local       Outside local      Outside global", "out");
+      const g = outs[0] ? outs[0].ip : "(interface outside ?)";
+      say(pad("(PAT actif)", 4) + "Surcharge via " + g + " — ACL " + d.running.nat.acl, "cmt");
+      say("Interfaces inside : " + (ins.join(", ") || "(aucune)"), "out");
+      say("Interfaces outside: " + (outs.map(i => shortIf(i.name)).join(", ") || "(aucune)"), "out");
+    } else {
+      say("Pro Inside global      Inside local", "out");
+      say(pad("---", 4) + pad(d.running.nat.global, 19) + d.running.nat.local, "out");
+    }
+  }
   function genRun(d) {
     const L = [], add = (t, c) => L.push({ t, c: c || "out" });
     add("Building configuration...", "cmt"); add("", "out");
@@ -436,10 +513,17 @@
         if (i.switchport.mode === "trunk") { if (i.switchport.trunkEncap) add(" switchport trunk encapsulation " + i.switchport.trunkEncap, "out"); add(" switchport mode trunk", "out"); }
       }
       if (i.ip) add(" ip address " + i.ip + " " + i.mask, "out");
+      if (i.nat) add(" ip nat " + i.nat, "out");
       i.ipv6.forEach(x => add(" ipv6 address " + x, "out"));
       add(i.shutdown ? " shutdown" : " no shutdown", i.shutdown ? "cmt" : "out");
       add("!", "cmt");
     });
+    if (d.running.nat) {
+      if (d.running.nat.type === "pat") add(`ip nat inside source list ${d.running.nat.acl} interface ${d.running.nat.ifName || "?"}${d.running.nat.overload ? " overload" : ""}`, "out");
+      else add(`ip nat inside source static ${d.running.nat.local} ${d.running.nat.global}`, "out");
+      add("!", "cmt");
+    }
+    Object.keys(d.running.acls).forEach(n => { d.running.acls[n].forEach(e => add("access-list " + n + " " + e, "out")); add("!", "cmt"); });
     if (d.running.ipRouting && d.type === "router") { } // implicite
     if (d.running.ospf) { add("router ospf " + d.running.ospf.pid, "out"); d.running.ospf.networks.forEach(n => add(` network ${n.net} ${n.wild} area ${n.area}`, "out")); add("!", "cmt"); }
     if (d.running.bgp) { add("router bgp " + d.running.bgp.as, "out"); d.running.bgp.neighbors.forEach(n => add(` neighbor ${n.ip} remote-as ${n.as}`, "out")); d.running.bgp.networks.forEach(x => add(" network " + x, "out")); add("!", "cmt"); }
@@ -472,6 +556,27 @@
   /* ===================================================================
      LABS
      =================================================================== */
+  // Réachabilité inter-VLAN (router-on-a-stick) calculée d'après la config vivante
+  function ivOwnSide(sw, r, vlan, port, gwIp) {
+    if (!sw || !r) return false;
+    const p = sw.ifaces[port], tr = sw.ifaces["FastEthernet0/24"];
+    const g = r.ifaces["GigabitEthernet0/0"], sif = r.ifaces["GigabitEthernet0/0." + vlan];
+    return !!(sw.running.vlans[vlan] && p && p.switchport.mode === "access" && p.switchport.accessVlan === vlan && !p.shutdown
+      && tr && tr.switchport.mode === "trunk" && !tr.shutdown
+      && g && !g.shutdown && sif && sif.encap === vlan && sif.ip === gwIp);
+  }
+  function interVlanOK(sw, r) {
+    return ivOwnSide(sw, r, 10, "FastEthernet0/1", "192.168.10.1") && ivOwnSide(sw, r, 20, "FastEthernet0/2", "192.168.20.1");
+  }
+  function ivHint(sw, r) {
+    if (!sw.running.vlans[10] || !sw.running.vlans[20]) return "Crée d'abord les VLAN 10 et 20 sur le switch.";
+    if (sw.ifaces["FastEthernet0/24"].switchport.mode !== "trunk") return "Le lien Fa0/24 vers le routeur doit être en trunk.";
+    const g = r.ifaces["GigabitEthernet0/0"];
+    if (g.shutdown) return "Active l'interface Gi0/0 du routeur (no shutdown).";
+    if (!r.ifaces["GigabitEthernet0/0.10"] || !r.ifaces["GigabitEthernet0/0.20"]) return "Crée les sous-interfaces Gi0/0.10 et Gi0/0.20 sur le routeur.";
+    return "Vérifie l'encapsulation dot1Q et les IP des sous-interfaces (192.168.10.1 / 192.168.20.1).";
+  }
+
   const LABS = [
     {
       id: "vlan", title: "TP — VLANs & Trunk", icon: "🔀", color: "vlan", xp: 100,
@@ -513,6 +618,63 @@
         { id: "proc", t: "Activer le processus <b>OSPF</b> (router ospf 1)", hint: "<code>router ospf 1</code>", c: s => !!s.dev.running.ospf },
         { id: "n1", t: "Annoncer <b>10.0.0.0 0.0.0.3 area 0</b>", hint: "<code>network 10.0.0.0 0.0.0.3 area 0</code>", c: s => s.dev.running.ospf && s.dev.running.ospf.networks.some(n => n.net === "10.0.0.0" && n.area === "0") },
         { id: "n2", t: "Annoncer <b>192.168.1.0 0.0.0.255 area 0</b>", hint: "<code>network 192.168.1.0 0.0.0.255 area 0</code>", c: s => s.dev.running.ospf && s.dev.running.ospf.networks.some(n => n.net === "192.168.1.0" && n.area === "0") }
+      ]
+    },
+    {
+      id: "nat", title: "TP — NAT / PAT (overload)", icon: "🔁", color: "ipv6", xp: 130,
+      device: () => newRouter("Router"),
+      intro: "Le routeur relie le LAN privé à Internet. Configure la translation d'adresses PAT (overload) pour que tout le LAN sorte via une seule IP publique.",
+      topo: "LAN privé 192.168.1.0/24 → Gi0/0 (inside)  |  FAI 200.0.0.1/30 → Gi0/1 (outside)",
+      objectives: [
+        { id: "h", t: "Renommer le routeur en <b>R1</b>", hint: "<code>hostname R1</code>", c: s => s.dev.running.hostname === "R1" },
+        { id: "in", t: "<b>Gi0/0</b> : IP 192.168.1.1/24, activée, <b>ip nat inside</b>", hint: "<code>interface gi0/0</code> → <code>ip address 192.168.1.1 255.255.255.0</code> → <code>no shutdown</code> → <code>ip nat inside</code>", c: s => { const i = s.dev.ifaces["GigabitEthernet0/0"]; return i.ip === "192.168.1.1" && !i.shutdown && i.nat === "inside"; } },
+        { id: "out", t: "<b>Gi0/1</b> : IP 200.0.0.1/30, activée, <b>ip nat outside</b>", hint: "<code>interface gi0/1</code> → <code>ip address 200.0.0.1 255.255.255.252</code> → <code>no shutdown</code> → <code>ip nat outside</code>", c: s => { const i = s.dev.ifaces["GigabitEthernet0/1"]; return i.ip === "200.0.0.1" && !i.shutdown && i.nat === "outside"; } },
+        { id: "acl", t: "<b>ACL 1</b> : autoriser 192.168.1.0 0.0.0.255", hint: "<code>access-list 1 permit 192.168.1.0 0.0.0.255</code>", c: s => (s.dev.running.acls["1"] || []).some(e => /permit\s+192\.168\.1\.0\s+0\.0\.0\.255/.test(e)) },
+        { id: "pat", t: "Activer le <b>PAT</b> : ip nat inside source list 1 interface Gi0/1 overload", hint: "<code>ip nat inside source list 1 interface gi0/1 overload</code>", c: s => s.dev.running.nat && s.dev.running.nat.type === "pat" && s.dev.running.nat.acl === "1" && s.dev.running.nat.overload && /0\/1$/.test(s.dev.running.nat.ifName || "") },
+        { id: "ver", t: "Vérifier avec <code>show ip nat translations</code>", hint: "<code>do show ip nat translations</code> ou en mode #", c: s => s.ran.has("show ip nat translations") }
+      ]
+    },
+    {
+      id: "bgp", title: "TP — BGP (eBGP entre deux AS)", icon: "🛰️", color: "bgp", xp: 140,
+      device: () => newRouter("Router"),
+      intro: "Ton routeur (AS 65001) doit établir une session eBGP avec le voisin (AS 65002) et annoncer ton réseau LAN.",
+      topo: "Lien eBGP : Gi0/0 10.0.0.1/30 ↔ voisin 10.0.0.2 (AS 65002)  |  LAN à annoncer : 192.168.1.0/24",
+      objectives: [
+        { id: "h", t: "Renommer le routeur en <b>R1</b>", hint: "<code>hostname R1</code>", c: s => s.dev.running.hostname === "R1" },
+        { id: "ip", t: "<b>Gi0/0</b> : IP 10.0.0.1/30 + activée", hint: "<code>interface gi0/0</code> → <code>ip address 10.0.0.1 255.255.255.252</code> → <code>no shutdown</code>", c: s => { const i = s.dev.ifaces["GigabitEthernet0/0"]; return i.ip === "10.0.0.1" && !i.shutdown; } },
+        { id: "proc", t: "Démarrer <b>BGP</b> dans l'AS <b>65001</b>", hint: "<code>router bgp 65001</code>", c: s => s.dev.running.bgp && s.dev.running.bgp.as === 65001 },
+        { id: "nei", t: "Déclarer le voisin <b>10.0.0.2</b> en <b>remote-as 65002</b>", hint: "<code>neighbor 10.0.0.2 remote-as 65002</code>", c: s => s.dev.running.bgp && s.dev.running.bgp.neighbors.some(n => n.ip === "10.0.0.2" && n.as === 65002) },
+        { id: "net", t: "Annoncer le réseau <b>192.168.1.0</b>", hint: "<code>network 192.168.1.0 mask 255.255.255.0</code>", c: s => s.dev.running.bgp && s.dev.running.bgp.networks.some(x => x === "192.168.1.0") },
+        { id: "ver", t: "Vérifier avec <code>show ip bgp summary</code>", hint: "<code>do show ip bgp summary</code> ou en mode #", c: s => s.ran.has("show bgp summary") }
+      ]
+    },
+    {
+      id: "intervlan", title: "🏆 Lab multi-équipements — Ping inter-VLAN", icon: "🖧", color: "vlan", xp: 200,
+      multi: true,
+      devices: () => [newSwitch("Switch", "sw"), newRouter("Router", "r1"),
+        makeHost({ id: "pca", hostname: "PC-A", ip: "192.168.10.10", mask: "255.255.255.0", gw: "192.168.10.1", vlan: 10, port: "FastEthernet0/1" }),
+        makeHost({ id: "pcb", hostname: "PC-B", ip: "192.168.20.10", mask: "255.255.255.0", gw: "192.168.20.1", vlan: 20, port: "FastEthernet0/2" })],
+      intro: "Le grand défi ! Configure le SWITCH (VLANs + trunk) ET le ROUTEUR (router-on-a-stick), puis va sur PC-A et tape \"ping 192.168.20.10\" : ça doit RÉELLEMENT marcher entre les deux VLAN.",
+      topo: "PC-A (VLAN10, .10.10) → Fa0/1 | PC-B (VLAN20, .20.10) → Fa0/2 | Trunk Fa0/24 ↔ Routeur Gi0/0",
+      ping: (s, src, dst) => {
+        const sw = s.find("sw"), r = s.find("r1");
+        // ping de PC vers la passerelle / l'autre PC
+        if (src.type === "host") {
+          const me = src.vlan === 10 ? { v: 10, p: "FastEthernet0/1", gw: "192.168.10.1" } : { v: 20, p: "FastEthernet0/2", gw: "192.168.20.1" };
+          const other = src.vlan === 10 ? "192.168.20.10" : "192.168.10.10";
+          if (dst === me.gw) return ivOwnSide(sw, r, me.v, me.p, me.gw) ? { ok: true } : { ok: false, msg: ivHint(sw, r) };
+          if (dst === other || dst === (src.vlan === 10 ? "192.168.20.1" : "192.168.10.1")) return interVlanOK(sw, r) ? { ok: true } : { ok: false, msg: ivHint(sw, r) };
+          return { ok: false, msg: "Cible inconnue. Essaie ta passerelle (" + me.gw + ") ou l'autre PC (" + other + ")." };
+        }
+        return { ok: genericReach(src, dst) };
+      },
+      objectives: [
+        { id: "vlans", t: "Switch : créer <b>VLAN 10</b> et <b>VLAN 20</b>", hint: "Sur le switch (onglet Switch) : <code>vlan 10</code> puis <code>vlan 20</code>", c: s => { const sw = s.find("sw"); return sw.running.vlans[10] && sw.running.vlans[20]; } },
+        { id: "ports", t: "Switch : <b>Fa0/1</b> en accès VLAN10, <b>Fa0/2</b> en accès VLAN20", hint: "<code>interface fa0/1</code> → <code>switchport mode access</code> → <code>switchport access vlan 10</code> (idem Fa0/2 / VLAN20)", c: s => { const sw = s.find("sw"); const a = sw.ifaces["FastEthernet0/1"], b = sw.ifaces["FastEthernet0/2"]; return a.switchport.accessVlan === 10 && a.switchport.mode === "access" && b.switchport.accessVlan === 20 && b.switchport.mode === "access"; } },
+        { id: "trunk", t: "Switch : <b>Fa0/24</b> en <b>trunk</b>", hint: "<code>interface fa0/24</code> → <code>switchport mode trunk</code>", c: s => s.find("sw").ifaces["FastEthernet0/24"].switchport.mode === "trunk" },
+        { id: "g0", t: "Routeur : activer <b>Gi0/0</b> (no shutdown)", hint: "Sur le routeur (onglet Router) : <code>interface gi0/0</code> → <code>no shutdown</code>", c: s => !s.find("r1").ifaces["GigabitEthernet0/0"].shutdown },
+        { id: "sub", t: "Routeur : sous-interfaces <b>.10</b> et <b>.20</b> (dot1Q + IP passerelles)", hint: "<code>interface gi0/0.10</code> → <code>encapsulation dot1Q 10</code> → <code>ip address 192.168.10.1 255.255.255.0</code> (idem .20 / VLAN20 / .20.1)", c: s => { const r = s.find("r1"); const a = r.ifaces["GigabitEthernet0/0.10"], b = r.ifaces["GigabitEthernet0/0.20"]; return a && a.encap === 10 && a.ip === "192.168.10.1" && b && b.encap === 20 && b.ip === "192.168.20.1"; } },
+        { id: "ping", t: "🎯 <b>PC-A</b> ping <b>PC-B</b> avec succès (onglet PC-A → <code>ping 192.168.20.10</code>)", hint: "Va sur l'onglet <b>PC-A</b> et tape <code>ping 192.168.20.10</code>. S'il échoue, vérifie VLANs/trunk/sous-interfaces.", c: s => interVlanOK(s.find("sw"), s.find("r1")) && s.pinged }
       ]
     }
   ];
@@ -576,8 +738,12 @@
     document.documentElement.style.setProperty("--mc", `var(--r-${color})`);
 
     // session : devices + device actif
-    const devices = sandbox ? [newSwitch("Switch"), newRouter("Router")] : [lab.device()];
-    const session = { dev: devices[0], devices, ran: new Set(), history: [], hpos: -1, xpGiven: {} };
+    const devices = sandbox ? [newSwitch("Switch", "sw"), newRouter("Router", "r1")] : (lab.devices ? lab.devices() : [lab.device()]);
+    const startIdx = Math.max(0, devices.findIndex(d => d.type !== "host"));
+    const session = {
+      dev: devices[startIdx], devices, ran: new Set(), history: [], hpos: -1, xpGiven: {}, pinged: false,
+      lab: sandbox ? null : lab, find: id => devices.find(d => d.id === id)
+    };
 
     const objHtml = sandbox ? "" : lab.objectives.map((o, i) =>
       `<li class="lab-obj" data-obj="${o.id}"><span class="lab-obj-ck">${i + 1}</span><span class="lab-obj-t">${o.t}</span></li>`).join("");
@@ -588,7 +754,7 @@
           <button class="dg-btn" onclick="location.hash='#/lab'">← Labs</button>
           <div class="lab-head-title">${sandbox ? "🧪 Bac à sable" : lab.icon + " " + lab.title}</div>
           <div class="lab-head-actions">
-            ${devices.length > 1 ? `<div class="lab-devtabs" id="devtabs">${devices.map((d, i) => `<button class="lab-devtab ${i === 0 ? "on" : ""}" data-dev="${i}">${d.type === "switch" ? "🔀 " : "🛰️ "}${d.hostname}</button>`).join("")}</div>` : ""}
+            ${devices.length > 1 ? `<div class="lab-devtabs" id="devtabs">${devices.map((d, i) => `<button class="lab-devtab ${i === startIdx ? "on" : ""}" data-dev="${i}">${d.type === "switch" ? "🔀 " : d.type === "router" ? "🛰️ " : "💻 "}${d.hostname}</button>`).join("")}</div>` : ""}
             <button class="dg-btn" id="labReset">↻ Réinitialiser</button>
           </div>
         </div>

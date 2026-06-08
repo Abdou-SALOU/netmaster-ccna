@@ -515,7 +515,7 @@ table.ntbl td code{font-size:.82em}
 .lab-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .lab-head-title{font-weight:750;font-size:1.1rem;flex:1;min-width:0}
 .lab-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.lab-devtabs{display:flex;gap:4px;background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:3px}
+.lab-devtabs{display:flex;flex-wrap:wrap;gap:4px;background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:3px}
 .lab-devtab{background:transparent;border:none;color:var(--text-2);font:inherit;font-size:.82rem;font-weight:600;
   padding:6px 12px;border-radius:8px;cursor:pointer;transition:.15s}
 .lab-devtab.on{background:var(--mc);color:#fff}
@@ -563,6 +563,59 @@ table.ntbl td code{font-size:.82em}
 .lab-hintbox code{font-family:ui-monospace,Consolas,monospace;background:var(--code-bg);color:var(--mc);padding:1px 5px;border-radius:5px}
 
 /* ===================================================================
+   CARROUSELS (tableau de bord + barre latérale)
+   =================================================================== */
+.carousel{position:relative;margin:0 0 30px}
+.carousel-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:0 0 14px}
+.carousel-head-l{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;min-width:0}
+.carousel-title{font-size:1.32rem;font-weight:750;letter-spacing:-.4px;margin:0}
+.carousel-sub{color:var(--text-3);font-size:.84rem}
+.carousel-nav{display:flex;gap:6px;flex:none}
+.carousel-arrow{width:34px;height:34px;border-radius:10px;border:1px solid var(--border);background:var(--surface);
+  color:var(--text-2);display:grid;place-items:center;cursor:pointer;font-size:1.2rem;line-height:1;transition:.15s;font-family:inherit}
+.carousel-arrow:hover:not(:disabled){background:var(--surface-2);color:var(--text);border-color:var(--border-2)}
+.carousel-arrow:disabled{opacity:.3;cursor:default}
+.carousel-track{display:flex;gap:16px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;
+  scroll-behavior:smooth;-webkit-overflow-scrolling:touch;padding:4px 2px 8px;scrollbar-width:none}
+.carousel-track::-webkit-scrollbar{display:none}
+.carousel-slide{scroll-snap-align:start;flex:0 0 auto}
+.carousel-dots{display:flex;gap:6px;justify-content:center;margin-top:4px;flex-wrap:wrap}
+.carousel-dot{width:7px;height:7px;border-radius:50%;background:var(--border-2);border:none;padding:0;cursor:pointer;transition:.2s var(--ease)}
+.carousel-dot.on{background:var(--accent);width:20px;border-radius:9px}
+.carousel.no-scroll .carousel-nav,.carousel.no-scroll .carousel-dots{display:none}
+
+/* -- dashboard -- */
+.carousel-dash .carousel-slide{width:300px;max-width:82vw}
+.carousel-dash .carousel-slide>.mod-card{width:100%;height:100%}
+.carousel-dash .carousel-slide .mod-card:hover{transform:none;box-shadow:none}
+
+/* -- sidebar : une carte module à la fois -- */
+.carousel-side{margin:6px 0 4px}
+.carousel-side .carousel-head{margin-bottom:6px;align-items:center}
+.nav-group-inline{padding:0 !important}
+.carousel-side .carousel-arrow{width:26px;height:26px;border-radius:8px;font-size:1rem}
+.carousel-side .carousel-track{gap:10px;padding:2px 1px 6px}
+.carousel-side .carousel-slide{flex:0 0 100%;width:100%}
+.carousel-side .carousel-dot.on{background:var(--mc,var(--accent))}
+.snav-card{position:relative;border:1px solid var(--border);border-radius:13px;background:var(--surface);
+  padding:12px 13px 11px;cursor:pointer;transition:.18s;overflow:hidden}
+.snav-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--mc)}
+.snav-card:hover{background:var(--surface-2);border-color:color-mix(in srgb,var(--mc) 40%,var(--border))}
+.snav-card.active{border-color:var(--mc);background:color-mix(in srgb,var(--mc) 12%,var(--surface))}
+.snav-top{display:flex;align-items:center;gap:10px}
+.snav-ico{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-size:1rem;flex:none;
+  background:color-mix(in srgb,var(--mc) 16%,transparent);color:var(--mc)}
+.snav-title{font-size:.9rem;font-weight:600;color:var(--text);line-height:1.2}
+.snav-prog{height:5px;border-radius:99px;background:var(--surface-2);overflow:hidden;margin:10px 0 0}
+.snav-prog i{display:block;height:100%;border-radius:99px;width:0;transition:width .8s var(--ease);
+  background:linear-gradient(90deg,var(--mc),color-mix(in srgb,var(--mc) 45%,#fff))}
+.snav-meta{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:.72rem;color:var(--text-3)}
+.snav-sec{flex:1}
+.snav-meta .nav-dot{width:7px;height:7px;border-radius:50%;background:var(--border-2)}
+.snav-meta .nav-dot.done{background:var(--ok)}
+.ghost-btn.active{background:var(--surface-2);color:var(--text);border-color:var(--border)}
+
+/* ===================================================================
    RESPONSIVE
    =================================================================== */
 @media (max-width:1100px){
@@ -602,6 +655,8 @@ table.ntbl td code{font-size:.82em}
   .hero-stat b{font-size:1.45rem}
   .hero-cta{flex-direction:column}
   .hero-cta .btn{width:100%;justify-content:center}
+  .carousel-title{font-size:1.18rem}
+  .carousel-dash .carousel-slide{width:86vw;max-width:86vw}
   .mod-grid{grid-template-columns:1fr}
   .section-head{flex-direction:column;align-items:flex-start;gap:2px}
   .mod-hero{padding:18px 18px;gap:14px}
