@@ -54,25 +54,68 @@
   function buildNav() {
     const nav = $("#nav");
     let html = `<div class="nav-group-label">Accueil</div>
-      <div class="nav-item" data-nav="home"><span class="nav-ico">🏠</span>Tableau de bord</div>
-      <div class="nav-group-label">Cours</div>`;
-    NM.modules.filter(m => m.kind !== "tp").forEach(m => html += navItem(m));
-    html += `<div class="nav-group-label">Travaux pratiques</div>`;
-    NM.modules.filter(m => m.kind === "tp").forEach(m => html += navItem(m));
+      <div class="nav-item" data-nav="home"><span class="nav-ico">🏠</span>Tableau de bord</div>`;
+    html += sideCarousel("Cours", NM.modules.filter(m => m.kind !== "tp"));
+    html += sideCarousel("Travaux pratiques", NM.modules.filter(m => m.kind === "tp"));
     nav.innerHTML = html;
-    $$(".nav-item, [data-nav]", nav).forEach(bindNav);
+    $$("[data-nav]", nav).forEach(bindNav);
+    initCarousels(nav);
   }
-  function navItem(m) {
-    return `<div class="nav-item" data-nav="m/${m.id}" style="--mc:var(--r-${m.color})">
-      <span class="nav-ico">${m.icon}</span>${m.title}
-      <span class="nv-meta"><span class="nav-pct" data-pct="${m.id}"></span>
-      <span class="nav-dot" data-dot="${m.id}"></span></span></div>`;
+  // carrousel compact de la barre latérale (une carte module à la fois)
+  function sideCarousel(label, mods) {
+    const slides = mods.map(m => `<div class="carousel-slide"><div class="snav-card" data-nav="m/${m.id}" style="--mc:var(--r-${m.color})">
+      <div class="snav-top"><span class="snav-ico">${m.icon}</span><span class="snav-title">${m.title}</span></div>
+      <div class="snav-prog"><i data-bar="${m.id}"></i></div>
+      <div class="snav-meta"><span class="snav-sec">${m.sections.length} sections</span><span class="nav-pct" data-pct="${m.id}"></span><span class="nav-dot" data-dot="${m.id}"></span></div>
+    </div></div>`).join("");
+    return `<div class="carousel carousel-side" data-carousel>
+      <div class="carousel-head"><span class="nav-group-label nav-group-inline">${label}</span>
+        <div class="carousel-nav"><button class="carousel-arrow" data-dir="-1" aria-label="Précédent">‹</button><button class="carousel-arrow" data-dir="1" aria-label="Suivant">›</button></div></div>
+      <div class="carousel-track">${slides}</div>
+      <div class="carousel-dots"></div></div>`;
+  }
+  // carrousel du tableau de bord (plusieurs cartes visibles)
+  function carousel(label, sub, cards) {
+    return `<div class="carousel carousel-dash" data-carousel>
+      <div class="carousel-head"><div class="carousel-head-l"><h2 class="carousel-title">${label}</h2>${sub ? `<span class="carousel-sub">${sub}</span>` : ""}</div>
+        <div class="carousel-nav"><button class="carousel-arrow" data-dir="-1" aria-label="Précédent">‹</button><button class="carousel-arrow" data-dir="1" aria-label="Suivant">›</button></div></div>
+      <div class="carousel-track">${cards.map(h => `<div class="carousel-slide">${h}</div>`).join("")}</div>
+      <div class="carousel-dots"></div></div>`;
+  }
+  // moteur de carrousel : flèches + points + swipe natif (scroll-snap)
+  function initCarousels(root) {
+    $$(".carousel[data-carousel]", root).forEach(c => {
+      const track = $(".carousel-track", c), dotsWrap = $(".carousel-dots", c);
+      const slides = $$(".carousel-slide", track), arrows = $$(".carousel-arrow", c);
+      const slideLeft = s => track.scrollLeft + (s.getBoundingClientRect().left - track.getBoundingClientRect().left);
+      arrows.forEach(a => a.addEventListener("click", () => track.scrollBy({ left: (+a.dataset.dir) * track.clientWidth * 0.9, behavior: "smooth" })));
+      if (dotsWrap) dotsWrap.innerHTML = slides.map((_, i) => `<button class="carousel-dot" data-i="${i}" aria-label="Aller à ${i + 1}"></button>`).join("");
+      const dots = $$(".carousel-dot", c);
+      dots.forEach(d => d.addEventListener("click", () => track.scrollTo({ left: slideLeft(slides[+d.dataset.i]), behavior: "smooth" })));
+      function update() {
+        c.classList.toggle("no-scroll", track.scrollWidth <= track.clientWidth + 2);
+        let idx = 0, best = 1e9;
+        slides.forEach((s, i) => { const d = Math.abs(slideLeft(s) - track.scrollLeft); if (d < best) { best = d; idx = i; } });
+        dots.forEach((d, i) => d.classList.toggle("on", i === idx));
+        const max = track.scrollWidth - track.clientWidth - 2;
+        arrows.forEach(a => { a.disabled = (+a.dataset.dir < 0) ? track.scrollLeft <= 1 : track.scrollLeft >= max; });
+      }
+      track.addEventListener("scroll", () => requestAnimationFrame(update));
+      c._update = update; update();
+    });
+  }
+  function snavScrollToActive(key) {
+    const card = document.querySelector(`.snav-card[data-nav="${key}"]`);
+    if (!card) return;
+    const slide = card.closest(".carousel-slide"), track = card.closest(".carousel-track");
+    if (slide && track) track.scrollTo({ left: track.scrollLeft + (slide.getBoundingClientRect().left - track.getBoundingClientRect().left), behavior: "smooth" });
   }
   function refreshNavProgress() {
     NM.modules.forEach(m => {
       const p = modPct(m);
       const pe = $(`[data-pct="${m.id}"]`); if (pe) pe.textContent = p ? p + "%" : "";
       const de = $(`[data-dot="${m.id}"]`); if (de) de.classList.toggle("done", p === 100);
+      const be = $(`[data-bar="${m.id}"]`); if (be) be.style.width = p + "%";
     });
     const g = globalPct();
     $("#gpText").textContent = g + "%";
@@ -88,7 +131,8 @@
   function closeSidebar() { $("#sidebar").classList.remove("open"); $("#scrim").classList.remove("show"); }
 
   function setActiveNav(key) {
-    $$(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.nav === key));
+    $$("[data-nav]").forEach(n => n.classList.toggle("active", n.dataset.nav === key));
+    if (key && key.startsWith("m/")) snavScrollToActive(key);
   }
 
   function examBadge() {
@@ -115,7 +159,7 @@
     if (window.__obs) { window.__obs.disconnect(); window.__obs = null; }
 
     if (!parts.length || parts[0] === "home") { setActiveNav("home"); renderHome(view); crumb([["Accueil", ""]]); }
-    else if (parts[0] === "m")          { renderModule(view, parts[1]); }
+    else if (parts[0] === "m")          { renderModule(view, parts[1], parts[2]); }
     else if (parts[0] === "quiz")       { renderQuiz(view, parts[1]); }
     else if (parts[0] === "exam")       { setActiveNav("exam"); renderExam(view, parts[1]); }
     else if (parts[0] === "lab")        { setActiveNav("lab"); window.NMLab.render(view, parts[1]); }
@@ -161,22 +205,18 @@
         </div>
       </section>
 
-      <div class="section-head"><h2>Modules de cours</h2><span class="sub">Théorie + animations</span></div>
-      <div class="mod-grid">${courses.map(card).join("")}</div>
-
-      <div class="section-head"><h2>Travaux pratiques</h2><span class="sub">Commandes Cisco IOS pas-à-pas</span></div>
-      <div class="mod-grid">${tps.map(card).join("")}</div>
-
-      <div class="section-head"><h2>Outils de révision</h2></div>
-      <div class="mod-grid">
-        ${toolCard("🖥️", "Labs CLI — Console Cisco", "Tape de vraies commandes IOS dans un terminal simulé : labs guidés avec validation auto et XP.", "lab", "tp")}
-        ${toolCard("🎯", "Mode Examen", "Questions aléatoires, chrono, score final et correction détaillée.", "exam", "bgp")}
-        ${toolCard("🃏", "Flashcards", "Mémorise les définitions, ports, métriques et types de LSA.", "flashcards", "ipv6")}
-        ${toolCard("⌨️", "Mémo commandes", "Toutes les commandes Cisco des TP regroupées par thème.", "cheatsheet", "tp")}
-      </div>`;
+      ${carousel("Modules de cours", "Théorie + animations", courses.map(card))}
+      ${carousel("Travaux pratiques", "Commandes Cisco IOS pas-à-pas", tps.map(card))}
+      ${carousel("Outils de révision", "Labs, examen, mémo…", [
+        toolCard("🖥️", "Labs CLI — Console Cisco", "Tape de vraies commandes IOS dans un terminal simulé : labs guidés avec validation auto et XP.", "lab", "tp"),
+        toolCard("🎯", "Mode Examen", "Questions aléatoires, chrono, score final et correction détaillée.", "exam", "bgp"),
+        toolCard("🃏", "Flashcards", "Mémorise les définitions, ports, métriques et types de LSA.", "flashcards", "ipv6"),
+        toolCard("⌨️", "Mémo commandes", "Toutes les commandes Cisco des TP regroupées par thème.", "cheatsheet", "tp")
+      ])}`;
 
     $$("[data-go]", view).forEach(c => c.addEventListener("click", () => location.hash = "#/" + c.dataset.go));
     requestAnimationFrame(() => $$(".mod-progress i", view).forEach(b => b.style.width = b.dataset.w + "%"));
+    initCarousels(view);
   }
   function continueTarget() {
     const next = NM.modules.find(m => modPct(m) < 100);
@@ -208,7 +248,7 @@
   /* ===================================================================
      MODULE / LESSON
      =================================================================== */
-  function renderModule(view, id) {
+  function renderModule(view, id, scrollSec) {
     const m = NM.byId(id);
     if (!m) { location.hash = "#/"; return; }
     setActiveNav("m/" + id);
@@ -286,6 +326,11 @@
       }, { rootMargin: "-30% 0px -60% 0px" });
       secs.forEach(s => obs.observe(s));
       window.__obs = obs;
+    }
+    // défilement vers une section précise (depuis la nav déroulante)
+    if (scrollSec) {
+      const t = $("#sec-" + scrollSec);
+      if (t) setTimeout(() => window.scrollTo({ top: t.getBoundingClientRect().top + window.scrollY - 76, behavior: "smooth" }), 80);
     }
   }
 
@@ -561,6 +606,8 @@
     $("#app").classList.remove("hidden");
     router();
     refreshNavProgress();
+    // recalc des carrousels (la sidebar était construite app cachée → largeur 0)
+    $$(".carousel[data-carousel]").forEach(c => c._update && c._update());
     setTimeout(() => $("#splash").remove(), 700);
   }, 1700);
 
